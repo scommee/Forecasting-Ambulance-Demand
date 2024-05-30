@@ -5,7 +5,8 @@ This project is a Time Series & Forecasting project coded in R. The main objecti
 
 ## Project Goals
 - Forecast future emergency department demand in Jakarta using telephony data.
-- Employ Time Series techniques for data cleaning, formatting, and analysis.
+- Apply data cleaning and correct formatting.
+- Implement variety of Time Series techniques
 - Compare the performance of different Time Series forecasting methods.
 
 ## Project Structure
