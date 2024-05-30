@@ -1,0 +1,331 @@
+#Time Series & Forecasting Coursework Code
+library(zoo)
+library(forecast)
+library(dplyr)
+library(forecast)
+library(lubridate)
+library(Metrics)
+library(tseries)
+library(stats)
+library(TTR)
+library(tidyverse)
+
+#Read data frame into R 
+Data <- read.csv("C:/Users/shaun/Downloads/MAT005 - Coursework data (1).csv") 
+
+#Change Formatting of Dates
+Data$Dates <- as.Date(Data[,1], format="%d/%m/%Y")
+
+#Remove any missing values
+Data <- na.omit(Data)
+
+#Create a data-frame of the frequency of calls per day in new date format
+dailydf <- as.data.frame(table(Data$Dates))
+
+#Remove one observation so that data-set starts on a Monday to make it easier for analysis.
+dailydf <- dailydf[-1,]
+
+#Preliminary Analysis - Daily Statistics
+mean(dailydf$Freq)
+var(dailydf$Freq)
+sd(dailydf$Freq)
+min(dailydf$Freq)
+max(dailydf$Freq)
+
+#Weekly, Daily and Annual Seasonality Checks 
+
+#Show table of frequency of events within respective days of the week
+Data$day <- weekdays(as.Date(Data$Dates))
+table(Data$day)
+
+#Weekly Seasonality - # Convert to days of the week
+days_df <- data.frame(Day = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"),Volume = c(596, 565, 623, 590, 576, 428, 364))
+
+plot(days_df$Volume, xlab= "Days of the Week (Monday - Sunday)", ylab="Volume of Calls", main="Volume of Calls by Day of the Week", type="line")
+
+#Manually create a table with the correct ordered data.frame for graphically representation
+
+#Daily seasonality analysis
+Data$Hours <- as.POSIXct(Data$Incoming_Call_Time, format="%H") #Create new column Hours and change to POSIXct object
+
+Data$Hours <- format(as.POSIXct(Data$Hours), format= "%H:%M") #Format for Hours and Minutes
+
+#Plot to show the call volume throughout the day
+plot(table(Data$Hours), type="line", xlab="Hours of the Day", ylab="Volume of Calls", main="Total Volume of Calls Across a Working Day")
+
+#Table showing the density of the call volume across the working day 
+table(Data$Hours)
+
+#Annual Seasonality  
+df_new2 <- format(Data$Dates, format="%m") #Convert to Months
+table(df_new2)
+
+month_count <- table(df_new2) #Occurences across a month
+
+mean(month_count)
+
+#Plot for Months of the years
+plot(month_count, xlab="Months (January - December)", ylab="Volume of Calls", main="Call Volume across the Months of the Year", type="line")
+
+
+#Show plot across the years
+df_annual <- format(Data$Dates, format="%Y")
+table(df_annual)
+plot(table(df_annual), type="line", xlab="Years", ylab="Volume of Calls", main="Volume of Calls Across the Years")
+
+#Respective analysis for daily, weekly and annual call volume
+
+#Weekly analysis
+
+#Change into Weekly Data by extracting just year and week
+df3 <-format(Data$Dates, format="%Y/%W") 
+
+#Use Table function to count occurrences of events per week.
+weekly_count <- table(df3)
+
+#weekly Analysis 
+mean(weekly_count)
+var(weekly_count)
+sd(weekly_count)
+min(weekly_count)
+max(weekly_count)
+
+#Annual analysis
+
+#Extract just the year from the data
+df4 <- format(Data$Dates, format="%Y")
+
+#Use table function to count occurences of events per year 
+annual_count <- table(df4)
+
+#Annual Analysis
+mean(annual_count)
+var(annual_count)
+sd(annual_count)
+min(annual_count)
+max(annual_count)
+
+#Create different data frames showing for Annual, Weekly or Daily seasonality. 
+
+#Training and Test set 
+train <- head(dailydf, round(length(dailydf$Freq) * 0.7))
+test <- tail(dailydf, round(length(dailydf$Freq)* 0.3))
+
+#Turn into Time Series Objects
+dfts <- ts(dailydf$Freq, freq=7)
+trainnewts <- ts(train$Freq, freq=7)
+testnewts <- ts(test$Freq, freq=7)
+
+plot(dfts, main="Number of Calls across Weeks", xlab="Weeks", ylab="Volume of Calls", type="scatter")
+
+#With a frequency of 7 we have a model which looks over 76 weeks 
+
+#Run a naive model
+Trainmodel <- naive(trainnewts, h=532)      #we don't forecast over the test set 
+plot(dfts, xlab="Number of Weeks", ylab="Volume of Calls", main="Naive Model", xlim=c(0,230))
+abline(h=1, col="Red")
+abline(v=159, col="orange")
+
+#Predictions that the number of calls will be 1 per week. 
+
+#Decompose function to look at trend, level and seasonality.
+plot(decompose(dfts))
+
+decomp <- decompose(dfts)
+plot(decomp$random)
+
+#Check for randomness 
+residuals <- decomp$random
+
+Box.test(residuals, lag=7, type="Ljung-Box") #p-value well below 0.05 so not white noise.
+
+#24th October - 18th December 
+
+#Prediction Models REAL ONES
+
+#Single Exponential Smoothing - SES (Just the level component)
+
+ses <- HoltWinters(trainnewts, alpha=NULL, beta=FALSE, gamma=FALSE) #Run the Model
+ses2 <- forecast(ses, h=532, level=c(80,95))
+ses2$mean[476:532]
+trainnewts
+plot(ses2, col="Yellow", main="Single Exponential Smoothing")
+abline(v=159, col="Orange")
+lines(ses2$fitted)
+lines(ses2$mean)
+
+#Holt-Linear Model (This includes Trend and Level) Taking column 1 from each predict and holt winters gives us the fitted values of the model
+hl <- HoltWinters(trainnewts, alpha=NULL, beta=NULL, gamma=FALSE) #Run the Model
+hl2 <- forecast(hl, h=532, prediction.interval=T)  #make predictions 
+
+plot(hl2, col="Yellow", main="Holt-Linear Model", ylim=c(-50,15))
+abline(v=159, col="Orange")
+lines(hl2$fitted)
+lines(hl2$mean)
+
+#Holt-Winters Triple Exponential Smoothing
+hw <- HoltWinters(trainnewts, alpha=NULL, beta=NULL, gamma=NULL) #Run the Model
+hw2 <- forecast(hw, h=532, prediction.interval=T) #Predictions on Model
+hw2
+
+#Plotting together
+plot(dfts, ylim=c(-5,12), xlab="Weeks", ylab="Volume of Calls", main="Forecasting Models", col="yellow")
+abline(v=159, col="orange")
+lines(hw2$fitted, col="Magenta")
+lines(hw2$mean, col="Magenta")
+lines(hl2$fitted, col="Green")
+lines(hl2$mean, col="Green")
+lines(ses2$fitted, col="Blue")
+lines(ses2$mean , col="Blue")
+legend("topleft", legend = c("Holt-linear Model", "Single Exponential Smoothing", "Triple Exponential Smoothing - Additive"), col = c("Green", "Blue", "Magenta"), lty = 1)
+
+#Show this against the test set and then show the predictions afterwards
+
+#Linear Regression & ARIMA 
+
+#ARIMA - Assumes no trend in the data 
+
+#Running autocorrelation Functions to check for Seasonality in the data
+trainacf <- ts(train$Freq, freq=1)
+acf(trainacf, lag.max=14, main="Autocorrelation")
+pacf(trainacf, lag.max=14, main="Partial Autocorrelation")
+adf.test(trainnewts)
+
+#We dont observe any seasonality in the data so we will not use SARIMA
+
+#Using Auto.Arima we observe a straight line prediction
+
+#Create the ARIMA Model
+
+#Uses 3 values, p, d & q. 
+
+#P=AR (Values are expressed in terms of old values)
+#Q = MA = expressed in terms of previous error terms (level)
+#I = Integrated 
+
+#AUTO.ARIMA has selected (0,1,1) as its preferred model representing an integrated moving average
+#This has the lowest AIC value and therefore the highest predictive accuracy.
+
+adf.test(trainnewts) #p-value =0.01 showing that the data is stationary 
+arima_model <- auto.arima(trainnewts, seasonal=FALSE, stationary=TRUE)
+#Run predictions on the model for the time period discussed.
+arima_predict <- predict(arima_model, n.ahead=532, prediction.interval=T)
+
+#ARIMA Plotting Forecasts
+plot(dfts, col="Yellow", main="ARIMA Forecasting", xlab="Number of Weeks", ylab="Volume of Calls")
+lines(arima_predict$pred, col="Red")
+lines(arima_model$fitted, col="Red")
+abline(v=159, col="Black")
+legend("topleft", c("Observed","ARIMA(3,0,1)"), col=c('Yellow',"Red"), lty=c(1,4), cex=0.7)
+
+#Auto.arima providing odd results, wishing to apply seasonality when there is none. Looking to apply differencing
+#when data is already stationary and doesn't require it... steps taken to undertake own ARIMA tests
+#meant to represent Holt-Linear and it doesn't do so
+
+#Regression analysis
+
+#Create a new dataframe that can analyse this relationship between calls and time 
+
+#Training Data created with non-Time Series Objects
+
+trainreg <- head(dailydf, round(length(dailydf$Freq) * 0.7))
+testreg <- tail(dailydf, round(length(dailydf$Freq)* 0.3))
+
+#Creation of ID column representing the volume of days 
+trainreg <- cbind(ID = 1:nrow(trainreg), trainreg)
+testreg <- cbind(ID = 1:nrow(testreg), testreg)
+
+dfts
+#Run a regression with volume of calls with respect to Time (ID)
+
+Regression <- lm(Freq ~ ID, data=trainreg)
+
+#Check summary of Regression showing intercept of 3.1516 and slope of -0.0012
+summary(Regression)
+
+#Run Predictions on Regression Model
+Regpred <- predict(Regression, newdata = testreg)
+
+#Plot Regression against observed data
+plot(dfts, col="Yellow", main="Regression Forecast", xlab="Number of Weeks", ylab="Volume of Calls",xlim=c(0,230))
+lines(Regpred, col="Red")
+abline(v=159, col="Black")
+legend("topleft", c("Observed","Regression"), col=c('Yellow',"Red"), lty=c(1,4), cex=0.7)
+
+#Check MAPE & MSE for all models to check their accuracy 
+
+#Naive Model
+mape(1, testnewts) #108.19%
+mape(1, test$Freq)
+mse(1, testnewts) #2.88
+
+#Holt-Winters Triple-Exponential Smoothing Forecasting
+mape(testnewts, hw2$mean[1:476]) #62.37%
+mse(testnewts, hw2$mean[1:476]) #3.86
+
+#Holt-Linear 
+mape(testnewts, hl2$mean[1:476]) #1003.88%
+mse(testnewts, hl2$mean[1:476]) #322.77
+
+#Simple exponential smoothing
+mape(testnewts, ses2$mean[1:476]) #44.10%
+mse(testnewts, ses2$mean[1:476])  #2.1617
+
+#ARIMA
+mape(testnewts,arima_predict$pred[1:476]) #72.91%
+mse(testnewts, arima_predict$pred[1:476]) #1.74
+
+#Regression
+mape(Regpred, testnewts)#47.13%
+mse(Regpred, testnewts) #2.35
+
+
+#8 week predictions from Models across 56 days from October 23rd 2023.
+
+#NAIVE 
+sum(Trainmodel$mean[477:532]) 
+sum(Trainmodel$mean[477:483]) #7 calls per week
+
+#Single Exponential Smoothing
+ses2$mean[477:532] #9.889152 calls a week
+
+#Holt Winters Predictions
+hw2$mean[477:532] #N/A calls due to negative figures
+sum(hw2$mean[477:483]) #week 1 - zero calls 
+sum(hw2$mean[484:490]) #week 2 - zero calls 
+sum(hw2$mean[491:497]) #week 3 - zero calls 
+
+#Holt-Linear Predictions
+hl2$mean[477:532] #N/A calls due to negative figures
+sum(hl2$mean[477:483]) #week 1 - zero calls 
+
+#ARIMA Predictions
+sum(arima_predict$pred[477:483]) #17 calls - week one
+sum(arima_predict$pred[484:490]) #17 calls - week two
+sum(arima_predict$pred[491:497]) #17 calls - week three
+sum(arima_predict$pred[498:504]) #17 calls - week four
+sum(arima_predict$pred[505:511]) #17 calls - week five
+sum(arima_predict$pred[512:518]) #17 calls- week six
+sum(arima_predict$pred[519:525]) #17 calls - week seven
+sum(arima_predict$pred[526:532]) #17 calls - week eight
+
+#Regression
+
+#Number of calls = intercept + number of days (slope)
+
+#Total number of days in data-set = 1567, we wish to predict over 8 weeks so add 56
+#Forecast takes place between 1568 to 1623 days into Regression
+
+x <- 0:1623
+
+y = 3.151618 + x*(-0.001214) 
+
+sum(y[1568:1574]) # Week one - 8.719
+sum(y[1575:1581]) # Week two - 8.65
+sum(y[1582:1588]) #week three - 8.60
+sum(y[1589:1595]) #week four- 8.54 
+sum(y[1596:1602]) #week five - 8.48 
+sum(y[1603:1609]) #week six - 8.42
+sum(y[1610:1616]) #week seven - 8.36
+sum(y[1617:1623]) #week eight - 8.30
+
